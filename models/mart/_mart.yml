@@ -1,0 +1,14 @@
+version: 2
+
+models:
+
+  - name: mart_pricing__tariffs
+    description: Mart model at the tariff grain
+    columns:
+      - name: rule_id
+        description: Primary key for the set of rules defining price logic
+        data_tests:
+          - not_null
+      - name: price
+      - name: duration
+      - name: applies_on_days

@@ -1,0 +1,34 @@
+version: 2
+
+models:
+
+  - name: intm_pricing__tariffs
+    description: Intermediate model at the tariff grain
+    columns:
+      - name: rule_id
+        description: Primary key for the set of rules defining price logic
+        data_tests:
+          - not_null
+      - name: price
+      - name: duration
+      - name: applies_on_days
+      - name: applies_from
+      - name: applies_to
+      - name: interval
+      - name: repeat
+      - name: tariff_valid_from
+      - name: tariff_valid_to
+      
+  - name: intm_pricing__prices
+    description: Intermediate model at the price_id grain
+    columns:
+      - name: price_id
+        description: Primary key for price data
+        data_tests:
+          - not_null
+      - name: location_id
+      - name: pricing_mode
+      - name: created_at
+      - name: deleted_at
+      - name: rule_id      
+      

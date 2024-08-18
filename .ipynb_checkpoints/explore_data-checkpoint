@@ -1,0 +1,834 @@
+{
+ "cells": [
+  {
+   "cell_type": "code",
+   "execution_count": 1,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import duckdb\n",
+    "import numpy as np\n",
+    "import pandas as pd\n",
+    "\n",
+    "pd.set_option('display.max_columns', None)\n",
+    "pd.set_option(\"display.max_rows\", None)\n",
+    "pd.set_option('display.max_colwidth', None)\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 12,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Table Name: mart_pricing__tariffs\n",
+      "Schema: dbt_mart\n",
+      "  Column Name: rule_id\n",
+      "  Data Type: BIGINT\n",
+      "  Column Name: price\n",
+      "  Data Type: VARCHAR\n",
+      "  Column Name: duration\n",
+      "  Data Type: VARCHAR\n",
+      "  Column Name: applies_on_days\n",
+      "  Data Type: VARCHAR[]\n",
+      "\n",
+      "Table Name: prices\n",
+      "Schema: main\n",
+      "  Column Name: price_id\n",
+      "  Data Type: BIGINT\n",
+      "  Column Name: location_id\n",
+      "  Data Type: BIGINT\n",
+      "  Column Name: pricing_mode\n",
+      "  Data Type: VARCHAR\n",
+      "  Column Name: created_at\n",
+      "  Data Type: TIMESTAMP_NS\n",
+      "  Column Name: deleted_at\n",
+      "  Data Type: TIMESTAMP_NS\n",
+      "  Column Name: rule_id\n",
+      "  Data Type: BIGINT\n",
+      "\n",
+      "Table Name: rules\n",
+      "Schema: main\n",
+      "  Column Name: rule_id\n",
+      "  Data Type: BIGINT\n",
+      "  Column Name: created_at\n",
+      "  Data Type: TIMESTAMP WITH TIME ZONE\n",
+      "  Column Name: tariffs\n",
+      "  Data Type: VARCHAR\n"
+     ]
+    }
+   ],
+   "source": [
+    "conn = duckdb.connect(\"./pricing.duckdb\")\n",
+    "\n",
+    "# list tables, columns, and column data types\n",
+    "sql_list_tables_and_columns = \"\"\"\n",
+    "    SELECT \n",
+    "        t.table_name,\n",
+    "        t.table_schema,\n",
+    "        c.column_name,\n",
+    "        c.data_type\n",
+    "    FROM \n",
+    "        information_schema.tables AS t\n",
+    "        JOIN information_schema.columns AS c\n",
+    "        ON t.table_name = c.table_name\n",
+    "        AND t.table_schema = c.table_schema\n",
+    "    WHERE \n",
+    "        t.table_type = 'BASE TABLE'\n",
+    "    ORDER BY \n",
+    "        t.table_schema, t.table_name, c.ordinal_position;\n",
+    "\"\"\"\n",
+    "\n",
+    "# Execute the query and fetch results\n",
+    "result = conn.execute(sql_list_tables_and_columns)\n",
+    "columns_info = result.fetchall()\n",
+    "\n",
+    "# Initialize variables to track the current table\n",
+    "current_table = None\n",
+    "\n",
+    "# Print the results grouped by table and schema\n",
+    "for row in columns_info:\n",
+    "    table_name, table_schema, column_name, data_type = row\n",
+    "    \n",
+    "    # Check if we need to print a new table header\n",
+    "    if current_table != (table_name, table_schema):\n",
+    "        if current_table is not None:\n",
+    "            print()  # Add a blank line between tables\n",
+    "        print(f\"Table Name: {table_name}\")\n",
+    "        print(f\"Schema: {table_schema}\")\n",
+    "        current_table = (table_name, table_schema)\n",
+    "    \n",
+    "    # Print column details\n",
+    "    print(f\"  Column Name: {column_name}\")\n",
+    "    print(f\"  Data Type: {data_type}\")\n",
+    "\n",
+    "conn.close()\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": []
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 3,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "prices shape: (1964, 6)\n",
+      "\n"
+     ]
+    },
+    {
+     "data": {
+      "text/html": [
+       "<div>\n",
+       "<style scoped>\n",
+       "    .dataframe tbody tr th:only-of-type {\n",
+       "        vertical-align: middle;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe tbody tr th {\n",
+       "        vertical-align: top;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe thead th {\n",
+       "        text-align: right;\n",
+       "    }\n",
+       "</style>\n",
+       "<table border=\"1\" class=\"dataframe\">\n",
+       "  <thead>\n",
+       "    <tr style=\"text-align: right;\">\n",
+       "      <th></th>\n",
+       "      <th>price_id</th>\n",
+       "      <th>location_id</th>\n",
+       "      <th>pricing_mode</th>\n",
+       "      <th>created_at</th>\n",
+       "      <th>deleted_at</th>\n",
+       "      <th>rule_id</th>\n",
+       "    </tr>\n",
+       "  </thead>\n",
+       "  <tbody>\n",
+       "    <tr>\n",
+       "      <th>0</th>\n",
+       "      <td>1845357</td>\n",
+       "      <td>503495</td>\n",
+       "      <td>AUTOMATED</td>\n",
+       "      <td>2023-09-15 09:51:06</td>\n",
+       "      <td>2023-09-25 12:35:56</td>\n",
+       "      <td>1140917</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>1</th>\n",
+       "      <td>1842840</td>\n",
+       "      <td>185929</td>\n",
+       "      <td>AUTOMATED</td>\n",
+       "      <td>2023-09-15 09:49:30</td>\n",
+       "      <td>2023-09-25 12:34:12</td>\n",
+       "      <td>1127731</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>2</th>\n",
+       "      <td>1839711</td>\n",
+       "      <td>184929</td>\n",
+       "      <td>AUTOMATED</td>\n",
+       "      <td>2023-09-15 09:47:46</td>\n",
+       "      <td>2023-09-28 12:37:48</td>\n",
+       "      <td>984187</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>3</th>\n",
+       "      <td>1748325</td>\n",
+       "      <td>194734</td>\n",
+       "      <td>AUTOMATED</td>\n",
+       "      <td>2023-09-01 15:10:09</td>\n",
+       "      <td>2023-09-15 09:50:48</td>\n",
+       "      <td>1135983</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>4</th>\n",
+       "      <td>1748855</td>\n",
+       "      <td>40497</td>\n",
+       "      <td>AUTOMATED</td>\n",
+       "      <td>2023-09-01 15:10:36</td>\n",
+       "      <td>2023-09-15 09:50:52</td>\n",
+       "      <td>1136513</td>\n",
+       "    </tr>\n",
+       "  </tbody>\n",
+       "</table>\n",
+       "</div>"
+      ],
+      "text/plain": [
+       "   price_id  location_id pricing_mode          created_at          deleted_at  \\\n",
+       "0   1845357       503495    AUTOMATED 2023-09-15 09:51:06 2023-09-25 12:35:56   \n",
+       "1   1842840       185929    AUTOMATED 2023-09-15 09:49:30 2023-09-25 12:34:12   \n",
+       "2   1839711       184929    AUTOMATED 2023-09-15 09:47:46 2023-09-28 12:37:48   \n",
+       "3   1748325       194734    AUTOMATED 2023-09-01 15:10:09 2023-09-15 09:50:48   \n",
+       "4   1748855        40497    AUTOMATED 2023-09-01 15:10:36 2023-09-15 09:50:52   \n",
+       "\n",
+       "   rule_id  \n",
+       "0  1140917  \n",
+       "1  1127731  \n",
+       "2   984187  \n",
+       "3  1135983  \n",
+       "4  1136513  "
+      ]
+     },
+     "execution_count": 3,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "conn = duckdb.connect(\"./pricing.duckdb\")\n",
+    "df_prices = conn.execute(\"SELECT * FROM prices\").fetchdf()\n",
+    "conn.close()\n",
+    "print(f\"prices shape: {df_prices.shape}\\n\")\n",
+    "df_prices.head()\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 4,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "rules shape: (1735, 3)\n",
+      "\n"
+     ]
+    },
+    {
+     "data": {
+      "text/html": [
+       "<div>\n",
+       "<style scoped>\n",
+       "    .dataframe tbody tr th:only-of-type {\n",
+       "        vertical-align: middle;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe tbody tr th {\n",
+       "        vertical-align: top;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe thead th {\n",
+       "        text-align: right;\n",
+       "    }\n",
+       "</style>\n",
+       "<table border=\"1\" class=\"dataframe\">\n",
+       "  <thead>\n",
+       "    <tr style=\"text-align: right;\">\n",
+       "      <th></th>\n",
+       "      <th>rule_id</th>\n",
+       "      <th>created_at</th>\n",
+       "      <th>tariffs</th>\n",
+       "    </tr>\n",
+       "  </thead>\n",
+       "  <tbody>\n",
+       "    <tr>\n",
+       "      <th>0</th>\n",
+       "      <td>883511</td>\n",
+       "      <td>2022-09-21 15:00:25+01:00</td>\n",
+       "      <td>[{\"price\":0.8,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":1,\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":1.6,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":2,\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":2.4,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":3,\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":3.2,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":4,\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":5,\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.04,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":6,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.08,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":7,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.13,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":8,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.17,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":9,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.21,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":10,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.25,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":11,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.29,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":12,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.34,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":13,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.38,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":14,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.42,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":15,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.46,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":16,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.51,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":17,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.55,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":18,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.59,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":19,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.63,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":20,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.67,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":21,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.72,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":22,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.76,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":23,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.8,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":24,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":75,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":0,\"monthly\":true,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]}]</td>\n",
+       "    </tr>\n",
+       "  </tbody>\n",
+       "</table>\n",
+       "</div>"
+      ],
+      "text/plain": [
+       "   rule_id                created_at  \\\n",
+       "0   883511 2022-09-21 15:00:25+01:00   \n",
+       "\n",
+       "                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              tariffs  \n",
+       "0  [{\"price\":0.8,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":1,\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":1.6,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":2,\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":2.4,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":3,\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":3.2,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":4,\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":5,\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.04,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":6,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.08,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":7,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.13,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":8,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.17,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":9,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.21,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":10,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.25,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":11,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.29,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":12,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.34,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":13,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.38,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":14,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.42,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":15,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.46,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":16,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.51,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":17,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.55,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":18,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.59,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":19,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.63,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":20,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.67,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":21,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.72,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":22,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.76,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":23,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.8,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":24,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":75,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":0,\"monthly\":true,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]}]  "
+      ]
+     },
+     "execution_count": 4,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "conn = duckdb.connect(\"./pricing.duckdb\")\n",
+    "df_rules = conn.execute(\"SELECT * FROM rules\").fetchdf()\n",
+    "conn.close()\n",
+    "print(f\"rules shape: {df_rules.shape}\\n\")\n",
+    "df_rules.head(1)\n",
+    "\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 5,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "base pricing rules shape: (13053, 3)\n",
+      "\n"
+     ]
+    },
+    {
+     "data": {
+      "text/html": [
+       "<div>\n",
+       "<style scoped>\n",
+       "    .dataframe tbody tr th:only-of-type {\n",
+       "        vertical-align: middle;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe tbody tr th {\n",
+       "        vertical-align: top;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe thead th {\n",
+       "        text-align: right;\n",
+       "    }\n",
+       "</style>\n",
+       "<table border=\"1\" class=\"dataframe\">\n",
+       "  <thead>\n",
+       "    <tr style=\"text-align: right;\">\n",
+       "      <th></th>\n",
+       "      <th>rule_id</th>\n",
+       "      <th>created_at</th>\n",
+       "      <th>tariff</th>\n",
+       "    </tr>\n",
+       "  </thead>\n",
+       "  <tbody>\n",
+       "    <tr>\n",
+       "      <th>0</th>\n",
+       "      <td>883511</td>\n",
+       "      <td>2022-09-21 15:00:25+01:00</td>\n",
+       "      <td>{\"price\":0.8,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":1,\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]}</td>\n",
+       "    </tr>\n",
+       "  </tbody>\n",
+       "</table>\n",
+       "</div>"
+      ],
+      "text/plain": [
+       "   rule_id                created_at  \\\n",
+       "0   883511 2022-09-21 15:00:25+01:00   \n",
+       "\n",
+       "                                                                                                                                                                                        tariff  \n",
+       "0  {\"price\":0.8,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":1,\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]}  "
+      ]
+     },
+     "execution_count": 5,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "conn = duckdb.connect(\"./pricing.duckdb\")\n",
+    "df_b_p_rules = conn.execute(\"SELECT * FROM main_base.base_pricing__rules\").fetchdf()\n",
+    "conn.close()\n",
+    "print(f\"base pricing rules shape: {df_b_p_rules.shape}\\n\")\n",
+    "df_b_p_rules.head(1)\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 6,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "interim pricing tariffs shape: (13053, 3)\n",
+      "\n"
+     ]
+    },
+    {
+     "data": {
+      "text/html": [
+       "<div>\n",
+       "<style scoped>\n",
+       "    .dataframe tbody tr th:only-of-type {\n",
+       "        vertical-align: middle;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe tbody tr th {\n",
+       "        vertical-align: top;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe thead th {\n",
+       "        text-align: right;\n",
+       "    }\n",
+       "</style>\n",
+       "<table border=\"1\" class=\"dataframe\">\n",
+       "  <thead>\n",
+       "    <tr style=\"text-align: right;\">\n",
+       "      <th></th>\n",
+       "      <th>rule_id</th>\n",
+       "      <th>price</th>\n",
+       "      <th>duration</th>\n",
+       "      <th>applies_on_days</th>\n",
+       "    </tr>\n",
+       "  </thead>\n",
+       "  <tbody>\n",
+       "    <tr>\n",
+       "      <th>0</th>\n",
+       "      <td>883511</td>\n",
+       "      <td>0.8</td>\n",
+       "      <td>1</td>\n",
+       "      <td>[0, 1, 2, 3, 4, 5, 6]</td>\n",
+       "    </tr>\n",
+       "  </tbody>\n",
+       "</table>\n",
+       "</div>"
+      ],
+      "text/plain": [
+       "   rule_id price duration        applies_on_days\n",
+       "0   883511   0.8        1  [0, 1, 2, 3, 4, 5, 6]"
+      ]
+     },
+     "execution_count": 6,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "conn = duckdb.connect(\"./pricing.duckdb\")\n",
+    "df_i_p_tariffs = conn.execute(\"SELECT * FROM main_intm.intm_pricing__tariffs\").fetchdf()\n",
+    "conn.close()\n",
+    "print(f\"interim pricing tariffs shape: {df_b_p_rules.shape}\\n\")\n",
+    "df_i_p_tariffs.head(1)\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": []
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 21,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "qry shape: (13053, 8)\n",
+      "\n"
+     ]
+    },
+    {
+     "data": {
+      "text/html": [
+       "<div>\n",
+       "<style scoped>\n",
+       "    .dataframe tbody tr th:only-of-type {\n",
+       "        vertical-align: middle;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe tbody tr th {\n",
+       "        vertical-align: top;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe thead th {\n",
+       "        text-align: right;\n",
+       "    }\n",
+       "</style>\n",
+       "<table border=\"1\" class=\"dataframe\">\n",
+       "  <thead>\n",
+       "    <tr style=\"text-align: right;\">\n",
+       "      <th></th>\n",
+       "      <th>rule_id</th>\n",
+       "      <th>created_at</th>\n",
+       "      <th>price</th>\n",
+       "      <th>duration</th>\n",
+       "      <th>applies_on_days</th>\n",
+       "      <th>applies_from</th>\n",
+       "      <th>applies_to</th>\n",
+       "      <th>interval</th>\n",
+       "    </tr>\n",
+       "  </thead>\n",
+       "  <tbody>\n",
+       "    <tr>\n",
+       "      <th>0</th>\n",
+       "      <td>883511</td>\n",
+       "      <td>2022-09-21 15:00:25+01:00</td>\n",
+       "      <td>0.8</td>\n",
+       "      <td>1</td>\n",
+       "      <td>[0, 1, 2, 3, 4, 5, 6]</td>\n",
+       "      <td>00:00:00</td>\n",
+       "      <td>23:59:59</td>\n",
+       "      <td>hours</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>1</th>\n",
+       "      <td>883511</td>\n",
+       "      <td>2022-09-21 15:00:25+01:00</td>\n",
+       "      <td>1.6</td>\n",
+       "      <td>2</td>\n",
+       "      <td>[0, 1, 2, 3, 4, 5, 6]</td>\n",
+       "      <td>00:00:00</td>\n",
+       "      <td>23:59:59</td>\n",
+       "      <td>hours</td>\n",
+       "    </tr>\n",
+       "  </tbody>\n",
+       "</table>\n",
+       "</div>"
+      ],
+      "text/plain": [
+       "   rule_id                created_at price duration        applies_on_days  \\\n",
+       "0   883511 2022-09-21 15:00:25+01:00   0.8        1  [0, 1, 2, 3, 4, 5, 6]   \n",
+       "1   883511 2022-09-21 15:00:25+01:00   1.6        2  [0, 1, 2, 3, 4, 5, 6]   \n",
+       "\n",
+       "  applies_from applies_to interval  \n",
+       "0     00:00:00   23:59:59    hours  \n",
+       "1     00:00:00   23:59:59    hours  "
+      ]
+     },
+     "execution_count": 21,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "conn = duckdb.connect(\"./pricing.duckdb\")\n",
+    "\n",
+    "sql = '''\n",
+    "    SELECT\n",
+    "        rule_id,\n",
+    "        created_at,        \n",
+    "        tariff->>'$.price' AS price,\n",
+    "        tariff->>'$.size' AS duration,\n",
+    "        tariff->>'$.applies_on_days[*]' AS applies_on_days,\n",
+    "        tariff->>'$.applies_from' AS applies_from,\n",
+    "        tariff->>'$.applies_to' AS applies_to,\n",
+    "        tariff->>'$.interval' AS interval\n",
+    "    FROM\n",
+    "        main_base.base_pricing__rules\n",
+    "'''\n",
+    "\n",
+    "df_qry = conn.execute(sql).fetchdf()\n",
+    "conn.close()\n",
+    "print(f\"qry shape: {df_qry.shape}\\n\")\n",
+    "df_qry.head(2)\n",
+    "\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": []
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 22,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<div>\n",
+       "<style scoped>\n",
+       "    .dataframe tbody tr th:only-of-type {\n",
+       "        vertical-align: middle;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe tbody tr th {\n",
+       "        vertical-align: top;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe thead th {\n",
+       "        text-align: right;\n",
+       "    }\n",
+       "</style>\n",
+       "<table border=\"1\" class=\"dataframe\">\n",
+       "  <thead>\n",
+       "    <tr style=\"text-align: right;\">\n",
+       "      <th></th>\n",
+       "      <th>rule_id</th>\n",
+       "      <th>created_at</th>\n",
+       "      <th>tariff</th>\n",
+       "    </tr>\n",
+       "  </thead>\n",
+       "  <tbody>\n",
+       "    <tr>\n",
+       "      <th>0</th>\n",
+       "      <td>883511</td>\n",
+       "      <td>2022-09-21 15:00:25+01:00</td>\n",
+       "      <td>{\"price\":0.8,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":1,\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]}</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>1</th>\n",
+       "      <td>883511</td>\n",
+       "      <td>2022-09-21 15:00:25+01:00</td>\n",
+       "      <td>{\"price\":1.6,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":2,\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]}</td>\n",
+       "    </tr>\n",
+       "  </tbody>\n",
+       "</table>\n",
+       "</div>"
+      ],
+      "text/plain": [
+       "   rule_id                created_at  \\\n",
+       "0   883511 2022-09-21 15:00:25+01:00   \n",
+       "1   883511 2022-09-21 15:00:25+01:00   \n",
+       "\n",
+       "                                                                                                                                                                                        tariff  \n",
+       "0  {\"price\":0.8,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":1,\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]}  \n",
+       "1  {\"price\":1.6,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":2,\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]}  "
+      ]
+     },
+     "execution_count": 22,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "df_b_p_rules.head(2)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": []
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 27,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<div>\n",
+       "<style scoped>\n",
+       "    .dataframe tbody tr th:only-of-type {\n",
+       "        vertical-align: middle;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe tbody tr th {\n",
+       "        vertical-align: top;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe thead th {\n",
+       "        text-align: right;\n",
+       "    }\n",
+       "</style>\n",
+       "<table border=\"1\" class=\"dataframe\">\n",
+       "  <thead>\n",
+       "    <tr style=\"text-align: right;\">\n",
+       "      <th></th>\n",
+       "      <th>rule_id</th>\n",
+       "      <th>created_at</th>\n",
+       "      <th>tariffs</th>\n",
+       "    </tr>\n",
+       "  </thead>\n",
+       "  <tbody>\n",
+       "    <tr>\n",
+       "      <th>0</th>\n",
+       "      <td>883511</td>\n",
+       "      <td>2022-09-21 15:00:25+01:00</td>\n",
+       "      <td>[{\"price\":0.8,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":1,\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":1.6,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":2,\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":2.4,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":3,\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":3.2,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":4,\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":5,\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.04,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":6,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.08,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":7,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.13,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":8,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.17,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":9,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.21,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":10,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.25,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":11,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.29,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":12,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.34,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":13,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.38,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":14,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.42,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":15,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.46,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":16,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.51,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":17,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.55,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":18,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.59,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":19,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.63,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":20,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.67,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":21,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.72,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":22,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.76,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":23,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.8,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":24,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":75,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":0,\"monthly\":true,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]}]</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>1</th>\n",
+       "      <td>1301672</td>\n",
+       "      <td>2024-01-28 14:04:58+00:00</td>\n",
+       "      <td>[{\"price\":1.01,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]],\"size\":1,\"proportional\":false},{\"price\":2.02,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]],\"size\":2,\"proportional\":false},{\"price\":3.03,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]],\"size\":3,\"proportional\":false},{\"price\":4.04,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]],\"size\":4,\"proportional\":false},{\"price\":5.05,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]],\"size\":5,\"proportional\":true},{\"price\":4.58,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]],\"size\":24},{\"price\":13.74,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]],\"size\":168},{\"price\":14.39,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]],\"monthly\":true}]</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>2</th>\n",
+       "      <td>1303749</td>\n",
+       "      <td>2024-02-02 13:01:46+00:00</td>\n",
+       "      <td>[{\"price\":0.5,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]],\"size\":1,\"proportional\":false},{\"price\":1,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]],\"size\":2,\"proportional\":false},{\"price\":1.5,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]],\"size\":3,\"proportional\":false},{\"price\":2,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]],\"size\":4,\"proportional\":false},{\"price\":2.5,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]],\"size\":5,\"proportional\":false},{\"price\":3,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]],\"size\":6,\"proportional\":false},{\"price\":3.5,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]],\"size\":7,\"proportional\":false},{\"price\":4,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]],\"size\":8,\"proportional\":false},{\"price\":4.5,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]],\"size\":9,\"proportional\":false},{\"price\":5,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]],\"size\":10,\"proportional\":true},{\"price\":4.6,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]],\"size\":24},{\"price\":27,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]],\"size\":168},{\"price\":80,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]],\"monthly\":true}]</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>3</th>\n",
+       "      <td>1299755</td>\n",
+       "      <td>2024-01-23 17:55:10+00:00</td>\n",
+       "      <td>[{\"price\":1,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]],\"size\":1,\"proportional\":false},{\"price\":2,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]],\"size\":2,\"proportional\":false},{\"price\":3,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]],\"size\":3,\"proportional\":false},{\"price\":4,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]],\"size\":4,\"proportional\":true},{\"price\":3.3,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]],\"size\":24},{\"price\":25,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]],\"size\":168},{\"price\":60,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]],\"monthly\":true}]</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>4</th>\n",
+       "      <td>1299757</td>\n",
+       "      <td>2024-01-23 17:58:22+00:00</td>\n",
+       "      <td>[{\"price\":1,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]],\"size\":1,\"proportional\":false},{\"price\":2,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]],\"size\":2,\"proportional\":false},{\"price\":3,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]],\"size\":3,\"proportional\":false},{\"price\":4,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]],\"size\":4,\"proportional\":true},{\"price\":3.5,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]],\"size\":24},{\"price\":25,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]],\"size\":168},{\"price\":60,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]],\"monthly\":true}]</td>\n",
+       "    </tr>\n",
+       "  </tbody>\n",
+       "</table>\n",
+       "</div>"
+      ],
+      "text/plain": [
+       "   rule_id                created_at  \\\n",
+       "0   883511 2022-09-21 15:00:25+01:00   \n",
+       "1  1301672 2024-01-28 14:04:58+00:00   \n",
+       "2  1303749 2024-02-02 13:01:46+00:00   \n",
+       "3  1299755 2024-01-23 17:55:10+00:00   \n",
+       "4  1299757 2024-01-23 17:58:22+00:00   \n",
+       "\n",
+       "                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              tariffs  \n",
+       "0  [{\"price\":0.8,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":1,\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":1.6,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":2,\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":2.4,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":3,\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":3.2,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":4,\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":5,\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.04,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":6,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.08,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":7,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.13,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":8,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.17,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":9,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.21,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":10,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.25,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":11,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.29,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":12,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.34,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":13,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.38,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":14,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.42,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":15,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.46,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":16,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.51,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":17,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.55,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":18,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.59,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":19,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.63,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":20,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.67,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":21,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.72,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":22,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.76,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":23,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":4.8,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":24,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]},{\"price\":75,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"size\":0,\"monthly\":true,\"interval\":\"hours\",\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]]}]  \n",
+       "1                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        [{\"price\":1.01,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]],\"size\":1,\"proportional\":false},{\"price\":2.02,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]],\"size\":2,\"proportional\":false},{\"price\":3.03,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]],\"size\":3,\"proportional\":false},{\"price\":4.04,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]],\"size\":4,\"proportional\":false},{\"price\":5.05,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]],\"size\":5,\"proportional\":true},{\"price\":4.58,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]],\"size\":24},{\"price\":13.74,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]],\"size\":168},{\"price\":14.39,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]],\"monthly\":true}]  \n",
+       "2                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        [{\"price\":0.5,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]],\"size\":1,\"proportional\":false},{\"price\":1,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]],\"size\":2,\"proportional\":false},{\"price\":1.5,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]],\"size\":3,\"proportional\":false},{\"price\":2,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]],\"size\":4,\"proportional\":false},{\"price\":2.5,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]],\"size\":5,\"proportional\":false},{\"price\":3,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]],\"size\":6,\"proportional\":false},{\"price\":3.5,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]],\"size\":7,\"proportional\":false},{\"price\":4,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]],\"size\":8,\"proportional\":false},{\"price\":4.5,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]],\"size\":9,\"proportional\":false},{\"price\":5,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]],\"size\":10,\"proportional\":true},{\"price\":4.6,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]],\"size\":24},{\"price\":27,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]],\"size\":168},{\"price\":80,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]],\"monthly\":true}]  \n",
+       "3                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             [{\"price\":1,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]],\"size\":1,\"proportional\":false},{\"price\":2,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]],\"size\":2,\"proportional\":false},{\"price\":3,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]],\"size\":3,\"proportional\":false},{\"price\":4,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]],\"size\":4,\"proportional\":true},{\"price\":3.3,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]],\"size\":24},{\"price\":25,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]],\"size\":168},{\"price\":60,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]],\"monthly\":true}]  \n",
+       "4                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             [{\"price\":1,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]],\"size\":1,\"proportional\":false},{\"price\":2,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]],\"size\":2,\"proportional\":false},{\"price\":3,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]],\"size\":3,\"proportional\":false},{\"price\":4,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]],\"size\":4,\"proportional\":true},{\"price\":3.5,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]],\"size\":24},{\"price\":25,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]],\"size\":168},{\"price\":60,\"applies_on_days\":[0,1,2,3,4,5,6],\"applies_from\":\"00:00:00\",\"applies_to\":\"23:59:59\",\"interval\":\"hours\",\"repeat\":true,\"applies_between\":[[\"1800-01-01\",\"2100-01-01\"]],\"monthly\":true}]  "
+      ]
+     },
+     "execution_count": 27,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "df_rules_qry = df_rules.query(\"rule_id == '883511'\")\n",
+    "df_rules.head()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": []
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": []
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": []
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": []
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": []
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": []
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": []
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": []
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": []
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": []
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "Python 3 (ipykernel)",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.12.5"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 4
+}

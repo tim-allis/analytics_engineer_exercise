@@ -1,0 +1,16 @@
+version: 2
+
+models:
+
+  - name: base_pricing__rules  
+    description: Base table for pricing rules    
+    columns:
+      - name: rule_id
+        description: Primary key for the set of rules defining price logic
+        data_tests:
+          - not_null
+      - name: tariff
+        description: |
+          Unnested tariff data - each row now represents one tariff
+          (i.e. a price that applies to parking sessions of a particular
+          duration and start time)
